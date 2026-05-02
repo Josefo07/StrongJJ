@@ -1,0 +1,2055 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0a0a0a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="JJ Strong" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="manifest" href="manifest.json" />
+<title>JJ Strong · Rutina Personal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface-2: #1c1c1c;
+    --border: #2a2a2a;
+    --text: #f5f5f5;
+    --text-dim: #a3a3a3;
+    --text-faint: #666;
+    --accent: #ff6b1a;
+    --accent-dim: #cc5515;
+    --success: #4ade80;
+    --warn: #fbbf24;
+    --danger: #ef4444;
+  }
+  * { -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Manrope', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  .font-display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+
+  @keyframes timerPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 26, 0.5); }
+    50% { box-shadow: 0 0 0 12px rgba(255, 107, 26, 0); }
+  }
+  .timer-active { animation: timerPulse 1.5s ease-in-out infinite; }
+
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .screen-enter { animation: slideUp 0.25s ease-out; }
+
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-top { padding-top: env(safe-area-inset-top); }
+
+  button, [role="button"] { touch-action: manipulation; }
+
+  .stripe-accent {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--accent) 0px,
+      var(--accent) 2px,
+      transparent 2px,
+      transparent 8px
+    );
+  }
+
+  .install-banner {
+    animation: slideUp 0.3s ease-out;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+
+// Capture PWA install prompt
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  window.dispatchEvent(new Event('pwainstallready'));
+});
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+const {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar
+} = Recharts;
+
+// ============================================================
+// CATALOGO DE EJERCICIOS
+// ============================================================
+const EXERCISES = {
+  warmup_bike: {
+    id: 'warmup_bike',
+    nombre: 'Caminadora o bici',
+    categoria: 'calentamiento',
+    instrucciones: ['3 minutos a ritmo ligero', 'Calienta cadera, tobillo, rodilla'],
+    tempo: null,
+    descanso: 0,
+    video: null,
+  },
+  warmup_squat_banco: {
+    id: 'warmup_squat_banco',
+    nombre: 'Sentadilla a banco (sin peso)',
+    categoria: 'calentamiento',
+    instrucciones: [
+      'Banco bajo detras de ti, pies al ancho de hombros',
+      'Bajas tocando el banco con el trasero, te paras',
+      'Sin peso, sin pausa larga'
+    ],
+    tempo: null,
+    descanso: 30,
+    video: 'https://www.youtube.com/results?search_query=box+squat+bodyweight',
+    reps_default: 15,
+  },
+  warmup_glute_bridge: {
+    id: 'warmup_glute_bridge',
+    nombre: 'Glute bridge en piso',
+    categoria: 'calentamiento',
+    instrucciones: [
+      'Acostado boca arriba, rodillas dobladas, pies en piso',
+      'Subes cadera apretando gluteos, bajas controlado'
+    ],
+    tempo: null,
+    descanso: 30,
+    video: 'https://www.youtube.com/results?search_query=glute+bridge+exercise',
+    reps_default: 15,
+  },
+  warmup_ankle: {
+    id: 'warmup_ankle',
+    nombre: 'Movilidad de tobillo (knee to wall)',
+    categoria: 'calentamiento',
+    instrucciones: [
+      'De pie frente a pared, un pie adelante',
+      'Toca la pared con la rodilla sin levantar el talon',
+      '10 por lado'
+    ],
+    tempo: null,
+    descanso: 0,
+    video: 'https://www.youtube.com/results?search_query=ankle+mobility+knee+to+wall',
+    reps_default: 10,
+  },
+
+  sentadilla_espanola: {
+    id: 'sentadilla_espanola',
+    nombre: 'Sentadilla Espanola',
+    categoria: 'piernas',
+    estrella: true,
+    porque: 'Reduce ~30% la carga sobre el tendon rotuliano vs sentadilla normal. Ejercicio clinicamente validado para tendinopatia rotuliana (protocolo Rio et al.).',
+    instrucciones: [
+      'Liga gruesa atada a poste/columna a altura de rodilla',
+      'Pasa la liga por detras de tus rodillas (en la corva)',
+      'Camina al frente hasta tensarla. Pies al ancho de hombros',
+      'TORSO VERTICAL - no te inclines al frente',
+      'Bajas en 3 seg hasta 60-70 grados de flexion de rodilla',
+      'Pausa 3 seg abajo, sube en 3 seg',
+      'Brazos cruzados al pecho o al frente para balance'
+    ],
+    errores: [
+      'Inclinarse al frente (transfiere carga a cadera)',
+      'Bajar muy rapido',
+      'Liga muy floja o demasiado alta'
+    ],
+    cuandoParar: 'Dolor agudo > 4/10. Molestia 1-3/10 es aceptable segun protocolo clinico.',
+    tempo: { eccentric: 3, pause: 3, concentric: 3 },
+    descanso: 90,
+    video: 'https://www.youtube.com/results?search_query=spanish+squat+patellar+tendinopathy',
+    series_default: 3,
+    reps_default: 8,
+  },
+  rdl_mancuernas: {
+    id: 'rdl_mancuernas',
+    nombre: 'Peso Muerto Rumano (RDL) con Mancuernas',
+    categoria: 'piernas',
+    estrella: true,
+    porque: 'Fortalece isquiotibiales y gluteos = antagonistas del cuadriceps. Isquios fuertes amortiguan saltos del basquet. Cero estres en rodilla.',
+    instrucciones: [
+      'Mancuernas al frente de muslos, pies al ancho de cadera',
+      'Rodillas con flexion LIGERA y FIJA (15-20 grados)',
+      'BISAGRA DE CADERA: empuja cadera atras como tocando pared con trasero',
+      'Mancuernas bajan rozando muslos y espinillas',
+      'Bajas hasta sentir estiramiento en isquios (~media espinilla)',
+      'Espalda PLANA, mirada al piso 2 metros adelante',
+      'Subes apretando gluteos, llevando cadera al frente'
+    ],
+    errores: [
+      'Doblar rodillas como sentadilla',
+      'Encorvar espalda baja (riesgo lumbar)',
+      'Bajar la mancuerna lejos del cuerpo'
+    ],
+    cuandoParar: 'Si sientes trabajo en espalda baja en lugar de isquios/gluteo, estas encorvando.',
+    tempo: { eccentric: 3, pause: 1, concentric: 2 },
+    descanso: 90,
+    video: 'https://www.youtube.com/results?search_query=dumbbell+romanian+deadlift+technique',
+    series_default: 3,
+    reps_default: 12,
+  },
+  hip_thrust: {
+    id: 'hip_thrust',
+    nombre: 'Hip Thrust con Mancuerna',
+    categoria: 'piernas',
+    estrella: true,
+    porque: 'Ejercicio rey del gluteo. Gluteo fuerte estabiliza pelvis y rodilla en cada salto y aterrizaje.',
+    instrucciones: [
+      'Omoplatos apoyados en banco horizontal detras de ti',
+      'Pies firmes al ancho de cadera',
+      'Mancuerna sobre cadera (pon toalla doblada para no lastimar)',
+      'Empuja con TALONES, levanta cadera hasta linea recta de rodillas a hombros',
+      'APRIETA gluteos arriba, pausa 2 seg',
+      'Baja controlado en 2 seg sin tocar piso'
+    ],
+    errores: [
+      'Subir demasiado (hiperextender lumbar)',
+      'Empujar con punta del pie (carga rodilla)',
+      'No apretar gluteo arriba'
+    ],
+    tempo: { eccentric: 2, pause: 2, concentric: 2 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=dumbbell+hip+thrust+form',
+    series_default: 3,
+    reps_default: 12,
+  },
+  step_up: {
+    id: 'step_up',
+    nombre: 'Step-Up a Banco con Mancuernas',
+    categoria: 'piernas',
+    instrucciones: [
+      'Banco a altura MEDIA - rodilla NO debe pasar de 90 grados al subir',
+      'Mancuernas en cada mano',
+      'Pie completo en el banco',
+      'Sube empujando con TALON, no con la pierna de abajo',
+      'La pierna libre toca o flota arriba (no apoyes)',
+      'BAJA LENTO 2-3 seg con la pierna que esta en el banco',
+      'Completa todas las reps de un lado, luego cambia'
+    ],
+    errores: [
+      'Banco muy alto (rodilla > 90 grados)',
+      'Impulsarse con pierna de abajo',
+      'Bajar de un golpe'
+    ],
+    cuandoParar: 'La fase clave es BAJAR LENTO. Eso fortalece y rehabilita.',
+    tempo: { eccentric: 3, pause: 1, concentric: 1 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=dumbbell+step+up+exercise',
+    series_default: 3,
+    reps_default: 8,
+    unilateral: true,
+  },
+  curl_femoral: {
+    id: 'curl_femoral',
+    nombre: 'Curl Femoral en Polea (con tobillera)',
+    categoria: 'piernas',
+    instrucciones: [
+      'Tobillera de polea baja en un tobillo',
+      'De pie frente a la polea, sostente de algo',
+      'Flexiona rodilla llevando talon al gluteo',
+      'Controla la bajada en 3 seg'
+    ],
+    tempo: { eccentric: 3, pause: 1, concentric: 2 },
+    descanso: 60,
+    video: 'https://www.youtube.com/results?search_query=cable+leg+curl+standing',
+    series_default: 3,
+    reps_default: 10,
+    unilateral: true,
+  },
+  gemelos: {
+    id: 'gemelos',
+    nombre: 'Elevacion de Talones (Gemelos)',
+    categoria: 'piernas',
+    instrucciones: [
+      'De pie con mancuernas a los lados',
+      'Pies al ancho de cadera',
+      'Sube en punta de pies tan alto como puedas',
+      'Pausa 1 seg arriba, baja controlado'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 1 },
+    descanso: 45,
+    video: 'https://www.youtube.com/results?search_query=dumbbell+calf+raise',
+    series_default: 3,
+    reps_default: 15,
+  },
+  wall_sit: {
+    id: 'wall_sit',
+    nombre: 'Wall Sit Isometrico',
+    categoria: 'piernas',
+    estrella: true,
+    porque: 'Isometrico de cuadriceps con cero estres rotuliano si lo haces a 60 grados. Excelente para tendinopatia.',
+    instrucciones: [
+      'Espalda contra pared',
+      'Bajas hasta 60 grados de flexion de rodilla (NO 90 grados)',
+      'Muslos diagonales hacia abajo, no paralelos al piso',
+      'Pies al ancho de hombros, talones firmes',
+      'APRIETA cuadriceps activamente',
+      'Respira normal, manten el tiempo'
+    ],
+    cuandoParar: 'Si duele rodilla, abre el angulo (sube un poco).',
+    tempo: null,
+    descanso: 60,
+    video: 'https://www.youtube.com/results?search_query=wall+sit+exercise',
+    series_default: 3,
+    duracion_default: 30,
+    isometrico: true,
+  },
+
+  press_plano: {
+    id: 'press_plano',
+    nombre: 'Press de Pecho con Mancuernas (banco plano)',
+    categoria: 'torso',
+    instrucciones: [
+      'Banco plano, mancuernas a altura de pecho',
+      'Codos a 45 grados del torso (no abiertos a 90 grados)',
+      'Empujas hasta arriba sin trabar codos',
+      'Bajas controlado en 2 seg'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 2 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=dumbbell+bench+press+form',
+    series_default: 3,
+    reps_default: 11,
+  },
+  press_inclinado: {
+    id: 'press_inclinado',
+    nombre: 'Press Inclinado con Mancuernas',
+    categoria: 'torso',
+    instrucciones: [
+      'Banco a 30 grados (no mas, evita estres en hombro)',
+      'Mancuernas a altura del pecho alto',
+      'Empujas arriba, sin trabar codos',
+      'Bajas controlado'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 2 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=incline+dumbbell+press+30+degrees',
+    series_default: 3,
+    reps_default: 10,
+  },
+  press_hombros: {
+    id: 'press_hombros',
+    nombre: 'Press de Hombros Sentado',
+    categoria: 'torso',
+    instrucciones: [
+      'Sentado en banco con respaldo a 90 grados',
+      'Mancuernas a altura de orejas',
+      'Empujas arriba sin chocar mancuernas',
+      'Bajas controlado'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 2 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=seated+dumbbell+shoulder+press',
+    series_default: 3,
+    reps_default: 10,
+  },
+  fondos: {
+    id: 'fondos',
+    nombre: 'Fondos en Maquina',
+    categoria: 'torso',
+    instrucciones: [
+      'Manos en barras paralelas',
+      'Cuerpo ligeramente inclinado al frente para pecho',
+      'Bajas hasta 90 grados en codo',
+      'Subes controlado'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 2 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=chest+dips+technique',
+    series_default: 3,
+    reps_default: 9,
+  },
+
+  jalon_pecho: {
+    id: 'jalon_pecho',
+    nombre: 'Jalon en Polea al Pecho',
+    categoria: 'torso',
+    instrucciones: [
+      'Sentado en estacion de poleas',
+      'Agarre amplio (un poco mas que hombros)',
+      'Jalas a la parte alta del pecho',
+      'APRIETA omoplatos atras',
+      'Sube controlado'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 2 },
+    descanso: 75,
+    video: 'https://www.youtube.com/results?search_query=lat+pulldown+technique',
+    series_default: 3,
+    reps_default: 12,
+  },
+  remo_unilateral: {
+    id: 'remo_unilateral',
+    nombre: 'Remo Unilateral con Mancuerna',
+    categoria: 'torso',
+    instrucciones: [
+      'Una rodilla y mano apoyadas en banco plano',
+      'Mancuerna en mano libre, brazo extendido',
+      'Jalas la mancuerna hasta cadera',
+      'APRIETA omoplato atras',
+      'Bajas controlado'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 2 },
+    descanso: 60,
+    video: 'https://www.youtube.com/results?search_query=single+arm+dumbbell+row',
+    series_default: 3,
+    reps_default: 10,
+    unilateral: true,
+  },
+
+  curl_biceps: {
+    id: 'curl_biceps',
+    nombre: 'Curl de Biceps con Mancuernas',
+    categoria: 'torso',
+    instrucciones: [
+      'De pie, mancuernas a los lados',
+      'Codos pegados al torso (no se mueven)',
+      'Subes mancuernas en 1 seg, bajas en 2'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 1 },
+    descanso: 45,
+    video: 'https://www.youtube.com/results?search_query=dumbbell+bicep+curl+form',
+    series_default: 3,
+    reps_default: 12,
+  },
+  triceps_polea: {
+    id: 'triceps_polea',
+    nombre: 'Extension de Triceps en Polea',
+    categoria: 'torso',
+    instrucciones: [
+      'De pie frente a polea alta',
+      'Codos pegados al torso (no se despegan)',
+      'Extiendes brazos hacia abajo',
+      'Sube controlado sin levantar codos'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 1 },
+    descanso: 45,
+    video: 'https://www.youtube.com/results?search_query=tricep+pushdown+cable',
+    series_default: 3,
+    reps_default: 12,
+  },
+
+  plancha: {
+    id: 'plancha',
+    nombre: 'Plancha Frontal',
+    categoria: 'core',
+    instrucciones: [
+      'Antebrazos en piso, codos bajo hombros',
+      'Cuerpo en linea recta de hombros a tobillos',
+      'APRIETA gluteos y abdomen',
+      'Manten el tiempo'
+    ],
+    tempo: null,
+    descanso: 60,
+    video: 'https://www.youtube.com/results?search_query=plank+exercise+form',
+    series_default: 3,
+    duracion_default: 30,
+    isometrico: true,
+  },
+  crunch_polea: {
+    id: 'crunch_polea',
+    nombre: 'Crunch en Polea (de rodillas)',
+    categoria: 'core',
+    instrucciones: [
+      'De rodillas frente a polea alta',
+      'Cuerda detras de la cabeza',
+      'Llevas codos hacia los muslos',
+      'Aprietas abdomen, no jales con brazos'
+    ],
+    tempo: { eccentric: 2, pause: 1, concentric: 1 },
+    descanso: 45,
+    video: 'https://www.youtube.com/results?search_query=cable+crunch+kneeling',
+    series_default: 3,
+    reps_default: 15,
+  },
+};
+
+// ============================================================
+// RUTINAS POR FASE
+// ============================================================
+const ROUTINES = {
+  fase1: {
+    nombre: 'Fase 1 — Adaptacion',
+    semanas: '1-4',
+    descripcion: 'Construir base, tecnica y empezar a calmar la rodilla. Cargas conservadoras.',
+    dias: {
+      lunes: {
+        nombre: 'Full Body Suave',
+        foco: 'Activacion general con enfasis en piernas seguras',
+        duracion_estimada: 35,
+        ejercicios: [
+          { id: 'warmup_bike', warmup: true },
+          { id: 'warmup_squat_banco', warmup: true },
+          { id: 'warmup_glute_bridge', warmup: true },
+          { id: 'warmup_ankle', warmup: true },
+          { id: 'press_plano', series: 3, reps: 11 },
+          { id: 'remo_unilateral', series: 3, reps: 10 },
+          { id: 'hip_thrust', series: 3, reps: 12 },
+          { id: 'rdl_mancuernas', series: 3, reps: 12 },
+          { id: 'plancha', series: 3, duracion: 30 },
+        ],
+      },
+      jueves: {
+        nombre: 'Torso',
+        foco: 'Pecho, espalda, hombros, brazos, core',
+        duracion_estimada: 30,
+        ejercicios: [
+          { id: 'warmup_bike', warmup: true },
+          { id: 'press_inclinado', series: 3, reps: 10 },
+          { id: 'jalon_pecho', series: 3, reps: 12 },
+          { id: 'press_hombros', series: 3, reps: 10 },
+          { id: 'fondos', series: 3, reps: 9 },
+          { id: 'curl_biceps', series: 3, reps: 12 },
+          { id: 'triceps_polea', series: 3, reps: 12 },
+          { id: 'crunch_polea', series: 3, reps: 15 },
+        ],
+      },
+      sabado: {
+        nombre: 'Piernas (Terapeutico)',
+        foco: 'Sesion clave para tu rodilla. Trabajo isometrico-excentrico.',
+        duracion_estimada: 40,
+        ejercicios: [
+          { id: 'warmup_bike', warmup: true },
+          { id: 'warmup_squat_banco', warmup: true },
+          { id: 'warmup_glute_bridge', warmup: true },
+          { id: 'warmup_ankle', warmup: true },
+          { id: 'sentadilla_espanola', series: 3, reps: 8 },
+          { id: 'rdl_mancuernas', series: 4, reps: 10 },
+          { id: 'step_up', series: 3, reps: 8 },
+          { id: 'curl_femoral', series: 3, reps: 10 },
+          { id: 'gemelos', series: 3, reps: 15 },
+          { id: 'wall_sit', series: 3, duracion: 30 },
+        ],
+      },
+    },
+  },
+};
+
+// ============================================================
+// SUPLEMENTOS
+// ============================================================
+const SUPLEMENTOS = [
+  { id: 'whey', nombre: 'Whey Protein', dosis: '1-2 scoops (25-50g)', momento: 'Post-entreno o cena', prioridad: 1 },
+  { id: 'creatina', nombre: 'Creatina Monohidratada', dosis: '5g', momento: 'Cualquier momento, todos los dias', prioridad: 1 },
+  { id: 'colageno', nombre: 'Colageno + Vitamina C', dosis: '15g + 50mg vit C', momento: '30-60 min ANTES de pierna', prioridad: 2 },
+  { id: 'omega3', nombre: 'Omega 3 (EPA/DHA)', dosis: '2g EPA+DHA', momento: 'Con comida', prioridad: 2 },
+  { id: 'vitd', nombre: 'Vitamina D3', dosis: '2,000-4,000 UI', momento: 'Con desayuno', prioridad: 2 },
+];
+
+// ============================================================
+// HELPERS DE STORAGE
+// ============================================================
+const STORAGE_KEY = 'jjStrong_v1';
+
+const defaultState = {
+  fase: 'fase1',
+  fechaInicio: new Date().toISOString().slice(0, 10),
+  sesiones: [],
+  mediciones: [],
+  suplementosLog: {},
+  ultimoExport: null,
+};
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultState;
+    const parsed = JSON.parse(raw);
+    return { ...defaultState, ...parsed };
+  } catch (e) {
+    return defaultState;
+  }
+}
+
+function saveState(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Save failed', e);
+  }
+}
+
+// ============================================================
+// HELPERS DE FECHAS
+// ============================================================
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const DIAS_DISPLAY = {
+  domingo: 'Domingo',
+  lunes: 'Lunes',
+  martes: 'Martes',
+  miercoles: 'Miercoles',
+  jueves: 'Jueves',
+  viernes: 'Viernes',
+  sabado: 'Sabado',
+};
+
+function getTodayKey() {
+  return DIAS_SEMANA[new Date().getDay()];
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// ============================================================
+// PROGRESION AUTOMATICA
+// ============================================================
+function suggestNextWeight(exerciseId, sesiones) {
+  const relevantes = sesiones
+    .filter(s => s.ejercicios && s.ejercicios.some(e => e.id === exerciseId))
+    .slice(-3);
+
+  if (relevantes.length === 0) return null;
+
+  const ultima = relevantes[relevantes.length - 1];
+  const ej = ultima.ejercicios.find(e => e.id === exerciseId);
+  if (!ej || !ej.series || ej.series.length === 0) return null;
+
+  const ultimoPeso = ej.series[0].peso || 0;
+  const repsObjetivo = ej.repsObjetivo || ej.series[0].reps || 0;
+
+  if (relevantes.length >= 2) {
+    const completoTodo = relevantes.slice(-2).every(s => {
+      const e = s.ejercicios.find(x => x.id === exerciseId);
+      if (!e || !e.series) return false;
+      return e.series.every(serie => serie.reps >= (e.repsObjetivo || repsObjetivo));
+    });
+
+    if (completoTodo) {
+      return {
+        peso: Math.round((ultimoPeso + 1.5) * 2) / 2,
+        razon: 'Completaste todas las reps en las ultimas 2 sesiones. Subele.',
+      };
+    }
+  }
+
+  return { peso: ultimoPeso, razon: 'Manten peso. Apunta a completar todas las reps.' };
+}
+
+// ============================================================
+// COMPONENTE: Toast
+// ============================================================
+function Toast({ message, type = 'info', onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 2500);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  const colors = {
+    info: 'bg-neutral-800 border-neutral-700',
+    success: 'bg-green-900/80 border-green-700',
+    warn: 'bg-yellow-900/80 border-yellow-700',
+    danger: 'bg-red-900/80 border-red-700',
+  };
+
+  return (
+    <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-3 rounded-xl border ${colors[type]} backdrop-blur text-white text-sm shadow-2xl screen-enter`}>
+      {message}
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Banner de Instalacion PWA
+// ============================================================
+function InstallBanner() {
+  const [show, setShow] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (localStorage.getItem('jjstrong_pwa_dismissed')) return;
+    const handler = () => setShow(true);
+    window.addEventListener('pwainstallready', handler);
+    if (deferredInstallPrompt) setShow(true);
+    return () => window.removeEventListener('pwainstallready', handler);
+  }, []);
+
+  const install = async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const result = await deferredInstallPrompt.userChoice;
+    if (result.outcome === 'accepted') {
+      setShow(false);
+    }
+    deferredInstallPrompt = null;
+  };
+
+  const dismiss = () => {
+    setShow(false);
+    setDismissed(true);
+    localStorage.setItem('jjstrong_pwa_dismissed', '1');
+  };
+
+  if (!show || dismissed) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 p-4 install-banner">
+      <div className="max-w-md mx-auto bg-gradient-to-r from-orange-900/90 to-neutral-900/90 backdrop-blur border border-orange-700/50 rounded-2xl p-4">
+        <div className="flex items-start gap-3">
+          <div className="text-3xl">📲</div>
+          <div className="flex-1">
+            <div className="font-display text-xl">Instalar JJ Strong</div>
+            <p className="text-xs text-neutral-300 mt-1">Agrega la app a tu pantalla de inicio para acceso rapido y uso offline.</p>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button onClick={install}
+            className="flex-1 py-2.5 bg-orange-600 rounded-xl font-bold text-sm">Instalar</button>
+          <button onClick={dismiss}
+            className="px-4 py-2.5 bg-neutral-800 rounded-xl text-sm text-neutral-400">No ahora</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Timer de Descanso
+// ============================================================
+function RestTimer({ seconds, onComplete, onCancel }) {
+  const [remaining, setRemaining] = useState(seconds);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused) return;
+    if (remaining <= 0) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 800;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      } catch (e) {}
+      onComplete();
+      return;
+    }
+    const t = setTimeout(() => setRemaining(r => r - 1), 1000);
+    return () => clearTimeout(t);
+  }, [remaining, paused, onComplete]);
+
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md">
+      <div className="text-center w-full px-6">
+        <div className="text-xs font-mono text-neutral-500 mb-4 uppercase tracking-widest">Descanso</div>
+        <div className="font-display text-9xl text-orange-500 timer-active rounded-full inline-flex items-center justify-center w-72 h-72 border-4 border-orange-500/30">
+          {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+        </div>
+        <div className="mt-12 flex gap-3 justify-center">
+          <button onClick={() => setRemaining(r => Math.max(0, r - 15))}
+            className="px-5 py-3 bg-neutral-800 rounded-xl text-sm font-semibold">-15s</button>
+          <button onClick={() => setPaused(p => !p)}
+            className="px-5 py-3 bg-neutral-800 rounded-xl text-sm font-semibold">
+            {paused ? 'Reanudar' : 'Pausa'}
+          </button>
+          <button onClick={() => setRemaining(r => r + 15)}
+            className="px-5 py-3 bg-neutral-800 rounded-xl text-sm font-semibold">+15s</button>
+        </div>
+        <button onClick={onCancel}
+          className="mt-6 text-neutral-500 text-sm">Saltar descanso</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Timer de Tempo (3-3-3)
+// ============================================================
+function TempoTimer({ tempo, reps, onClose }) {
+  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState('listo');
+  const [currentRep, setCurrentRep] = useState(0);
+  const [phaseTime, setPhaseTime] = useState(0);
+
+  useEffect(() => {
+    if (!running) return;
+    const interval = setInterval(() => {
+      setPhaseTime(pt => pt + 0.1);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [running]);
+
+  useEffect(() => {
+    if (!running) return;
+    const tInPhase = phaseTime;
+
+    if (phase === 'eccentric' && tInPhase >= tempo.eccentric) {
+      setPhase('pause');
+      setPhaseTime(0);
+      try { if (navigator.vibrate) navigator.vibrate(50); } catch(e){}
+    } else if (phase === 'pause' && tInPhase >= tempo.pause) {
+      setPhase('concentric');
+      setPhaseTime(0);
+      try { if (navigator.vibrate) navigator.vibrate(50); } catch(e){}
+    } else if (phase === 'concentric' && tInPhase >= tempo.concentric) {
+      const next = currentRep + 1;
+      if (next >= reps) {
+        setRunning(false);
+        setPhase('done');
+        try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch(e){}
+      } else {
+        setCurrentRep(next);
+        setPhase('eccentric');
+        setPhaseTime(0);
+      }
+    }
+  }, [phaseTime, phase, currentRep, running, reps, tempo]);
+
+  const start = () => {
+    setRunning(true);
+    setPhase('eccentric');
+    setCurrentRep(0);
+    setPhaseTime(0);
+  };
+
+  const phaseLabels = {
+    listo: 'Listo',
+    eccentric: 'BAJA',
+    pause: 'PAUSA',
+    concentric: 'SUBE',
+    done: 'Listo!',
+  };
+
+  const phaseColors = {
+    listo: 'text-neutral-400',
+    eccentric: 'text-blue-400',
+    pause: 'text-yellow-400',
+    concentric: 'text-orange-500',
+    done: 'text-green-400',
+  };
+
+  const targetTime = phase === 'eccentric' ? tempo.eccentric :
+                     phase === 'pause' ? tempo.pause :
+                     phase === 'concentric' ? tempo.concentric : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md">
+      <div className="text-center w-full px-6">
+        <div className="text-xs font-mono text-neutral-500 mb-2 uppercase tracking-widest">
+          Rep {currentRep + 1} / {reps}
+        </div>
+        <div className={`font-display text-8xl mb-2 ${phaseColors[phase]}`}>
+          {phaseLabels[phase]}
+        </div>
+        <div className="font-mono text-2xl text-neutral-400 mb-8">
+          {targetTime > 0 ? `${(targetTime - phaseTime).toFixed(1)}s` : '·'}
+        </div>
+        <div className="font-mono text-xs text-neutral-600 mb-8">
+          Tempo: {tempo.eccentric}-{tempo.pause}-{tempo.concentric}
+        </div>
+        {!running && phase !== 'done' && (
+          <button onClick={start}
+            className="px-8 py-4 bg-orange-600 rounded-2xl font-bold text-white">
+            Iniciar Rep
+          </button>
+        )}
+        {phase === 'done' && (
+          <button onClick={() => { setPhase('listo'); setCurrentRep(0); }}
+            className="px-8 py-4 bg-green-600 rounded-2xl font-bold text-white">
+            Otra serie
+          </button>
+        )}
+        <button onClick={onClose}
+          className="block mx-auto mt-8 text-neutral-500 text-sm">Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Pantalla de Ejercicio (en sesion)
+// ============================================================
+function ExerciseScreen({ exerciseConfig, onComplete, onSkip, onShowToast, sesiones }) {
+  const ex = EXERCISES[exerciseConfig.id];
+  const series = exerciseConfig.series || ex.series_default || 3;
+  const repsObj = exerciseConfig.reps || ex.reps_default;
+  const duracionObj = exerciseConfig.duracion || ex.duracion_default;
+  const isWarmup = exerciseConfig.warmup;
+
+  const sugerencia = useMemo(() =>
+    isWarmup ? null : suggestNextWeight(ex.id, sesiones),
+    [ex.id, sesiones, isWarmup]
+  );
+
+  const [registros, setRegistros] = useState(() => {
+    return Array.from({ length: series }, () => ({
+      peso: sugerencia ? sugerencia.peso : 0,
+      reps: repsObj || 0,
+      duracion: duracionObj || 0,
+      done: false,
+    }));
+  });
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [showRest, setShowRest] = useState(false);
+  const [showTempo, setShowTempo] = useState(false);
+  const [serieActiva, setSerieActiva] = useState(0);
+
+  const totalSeries = ex.unilateral ? series * 2 : series;
+
+  const completarSerie = (idx) => {
+    const newReg = [...registros];
+    newReg[idx] = { ...newReg[idx], done: true };
+    setRegistros(newReg);
+
+    if (idx < registros.length - 1) {
+      setSerieActiva(idx + 1);
+      if (ex.descanso > 0) setShowRest(true);
+    } else {
+      onComplete({
+        id: ex.id,
+        nombre: ex.nombre,
+        repsObjetivo: repsObj,
+        series: newReg.map(r => ({
+          peso: Number(r.peso) || 0,
+          reps: Number(r.reps) || 0,
+          duracion: Number(r.duracion) || 0,
+        })),
+      });
+    }
+  };
+
+  const updateRegistro = (idx, field, value) => {
+    const newReg = [...registros];
+    newReg[idx] = { ...newReg[idx], [field]: value };
+    setRegistros(newReg);
+  };
+
+  return (
+    <div className="screen-enter">
+      <div className="px-5 pt-6 pb-4 border-b border-neutral-800">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            {ex.estrella && (
+              <div className="text-[10px] font-mono text-orange-500 uppercase tracking-widest mb-1">* Ejercicio Clave</div>
+            )}
+            {isWarmup && (
+              <div className="text-[10px] font-mono text-blue-400 uppercase tracking-widest mb-1">Calentamiento</div>
+            )}
+            <h2 className="font-display text-3xl leading-none">{ex.nombre}</h2>
+          </div>
+          <button onClick={onSkip} className="text-xs text-neutral-500 px-3 py-1 border border-neutral-800 rounded-lg">Saltar</button>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3 text-xs font-mono text-neutral-400">
+          <span>{totalSeries} series</span>
+          {ex.isometrico ? (
+            <span>| {duracionObj}s c/u</span>
+          ) : (
+            <span>| {repsObj} reps {ex.unilateral ? 'por lado' : ''}</span>
+          )}
+          {ex.tempo && (
+            <span>| tempo {ex.tempo.eccentric}-{ex.tempo.pause}-{ex.tempo.concentric}</span>
+          )}
+        </div>
+
+        {sugerencia && (
+          <div className="mt-3 p-3 bg-orange-900/20 border border-orange-900/40 rounded-xl">
+            <div className="text-[10px] font-mono text-orange-400 uppercase tracking-widest">Sugerencia de carga</div>
+            <div className="text-sm mt-1">
+              <span className="font-display text-2xl text-orange-500">{sugerencia.peso} kg</span>
+              <span className="text-xs text-neutral-400 ml-3">{sugerencia.razon}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex gap-2 flex-wrap">
+          <button onClick={() => setShowInstructions(true)}
+            className="text-xs px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-lg flex items-center gap-2">
+            Como se hace
+          </button>
+          {ex.tempo && !isWarmup && (
+            <button onClick={() => setShowTempo(true)}
+              className="text-xs px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-lg flex items-center gap-2">
+              Timer Tempo
+            </button>
+          )}
+          {ex.video && (
+            <a href={ex.video} target="_blank" rel="noopener"
+              className="text-xs px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-lg flex items-center gap-2">
+              Video
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className="px-5 py-5 space-y-3">
+        {registros.map((r, idx) => {
+          const isActive = idx === serieActiva && !r.done;
+          return (
+            <div key={idx}
+              className={`p-4 rounded-2xl border transition ${
+                r.done ? 'bg-green-950/30 border-green-900/40' :
+                isActive ? 'bg-neutral-900 border-orange-500/60' :
+                'bg-neutral-900/50 border-neutral-800'
+              }`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-mono text-xs uppercase tracking-widest text-neutral-400">
+                  Serie {idx + 1} {r.done && '✓'}
+                </div>
+                {!r.done && isActive && (
+                  <div className="text-[10px] font-mono text-orange-500">EN CURSO</div>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                {!ex.isometrico && !isWarmup && (
+                  <div className="flex-1">
+                    <label className="text-[10px] font-mono text-neutral-500 uppercase">Peso (kg)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={r.peso}
+                      onChange={e => updateRegistro(idx, 'peso', e.target.value)}
+                      disabled={r.done}
+                      className="w-full mt-1 px-3 py-3 bg-black border border-neutral-800 rounded-lg font-mono text-2xl"
+                    />
+                  </div>
+                )}
+
+                {!ex.isometrico ? (
+                  <div className="flex-1">
+                    <label className="text-[10px] font-mono text-neutral-500 uppercase">Reps</label>
+                    <input
+                      type="number"
+                      value={r.reps}
+                      onChange={e => updateRegistro(idx, 'reps', e.target.value)}
+                      disabled={r.done}
+                      className="w-full mt-1 px-3 py-3 bg-black border border-neutral-800 rounded-lg font-mono text-2xl"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1">
+                    <label className="text-[10px] font-mono text-neutral-500 uppercase">Segundos</label>
+                    <input
+                      type="number"
+                      value={r.duracion}
+                      onChange={e => updateRegistro(idx, 'duracion', e.target.value)}
+                      disabled={r.done}
+                      className="w-full mt-1 px-3 py-3 bg-black border border-neutral-800 rounded-lg font-mono text-2xl"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {!r.done && (
+                <button onClick={() => completarSerie(idx)}
+                  className="w-full mt-3 py-3 bg-orange-600 hover:bg-orange-500 rounded-xl font-bold text-white">
+                  Completar Serie
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {showInstructions && (
+        <div className="fixed inset-0 z-40 bg-black/95 backdrop-blur p-5 overflow-y-auto">
+          <button onClick={() => setShowInstructions(false)}
+            className="text-neutral-400 text-sm mb-4">&larr; Volver</button>
+          <h3 className="font-display text-3xl mb-4">{ex.nombre}</h3>
+
+          {ex.porque && (
+            <div className="mb-5 p-4 bg-orange-900/20 border border-orange-900/40 rounded-xl">
+              <div className="text-[10px] font-mono text-orange-400 uppercase tracking-widest mb-1">Por que</div>
+              <p className="text-sm text-neutral-200">{ex.porque}</p>
+            </div>
+          )}
+
+          <div className="mb-5">
+            <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">Ejecucion</div>
+            <ol className="space-y-2">
+              {ex.instrucciones.map((inst, i) => (
+                <li key={i} className="flex gap-3 text-sm">
+                  <span className="font-mono text-orange-500 flex-shrink-0">{i + 1}.</span>
+                  <span>{inst}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {ex.errores && (
+            <div className="mb-5">
+              <div className="text-[10px] font-mono text-red-400 uppercase tracking-widest mb-2">Errores Comunes</div>
+              <ul className="space-y-1">
+                {ex.errores.map((err, i) => (
+                  <li key={i} className="text-sm text-neutral-300 flex gap-2">
+                    <span className="text-red-500">&times;</span>
+                    <span>{err}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {ex.cuandoParar && (
+            <div className="mb-5 p-4 bg-yellow-900/20 border border-yellow-900/40 rounded-xl">
+              <div className="text-[10px] font-mono text-yellow-400 uppercase tracking-widest mb-1">Importante</div>
+              <p className="text-sm">{ex.cuandoParar}</p>
+            </div>
+          )}
+
+          {ex.video && (
+            <a href={ex.video} target="_blank" rel="noopener"
+              className="block w-full py-4 bg-neutral-900 border border-neutral-800 rounded-xl text-center font-semibold mb-3">
+              Ver Video Demostrativo (YouTube)
+            </a>
+          )}
+        </div>
+      )}
+
+      {showRest && (
+        <RestTimer
+          seconds={ex.descanso}
+          onComplete={() => { setShowRest(false); onShowToast('A la siguiente serie!', 'success'); }}
+          onCancel={() => setShowRest(false)}
+        />
+      )}
+
+      {showTempo && ex.tempo && (
+        <TempoTimer tempo={ex.tempo} reps={repsObj || 8} onClose={() => setShowTempo(false)} />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Inicio de Sesion
+// ============================================================
+function SessionStart({ rutina, diaKey, onStart, onCancel }) {
+  const [dolorPre, setDolorPre] = useState(0);
+  const [energia, setEnergia] = useState(3);
+
+  return (
+    <div className="screen-enter px-5 pt-6 pb-24">
+      <button onClick={onCancel} className="text-neutral-500 text-sm mb-3">&larr; Cancelar</button>
+      <div className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">{DIAS_DISPLAY[diaKey]}</div>
+      <h2 className="font-display text-4xl leading-none mt-1">{rutina.nombre}</h2>
+      <p className="text-sm text-neutral-400 mt-2">{rutina.foco}</p>
+      <p className="text-xs text-neutral-500 mt-1">~{rutina.duracion_estimada} min | {rutina.ejercicios.length} ejercicios</p>
+
+      <div className="mt-8">
+        <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+          Dolor de rodilla AHORA (0-10)
+        </label>
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            type="range" min="0" max="10" value={dolorPre}
+            onChange={e => setDolorPre(Number(e.target.value))}
+            className="flex-1 accent-orange-500"
+          />
+          <div className="font-display text-3xl w-12 text-center" style={{
+            color: dolorPre <= 2 ? '#4ade80' : dolorPre <= 5 ? '#fbbf24' : '#ef4444'
+          }}>{dolorPre}</div>
+        </div>
+        {dolorPre >= 5 && (
+          <p className="text-xs text-yellow-400 mt-2">
+            Dolor alto. Considera reducir intensidad o saltar ejercicios de pierna pesada.
+          </p>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Energia (1-5)</label>
+        <div className="mt-3 flex gap-2">
+          {[1, 2, 3, 4, 5].map(n => (
+            <button key={n}
+              onClick={() => setEnergia(n)}
+              className={`flex-1 py-3 rounded-xl border ${
+                energia === n ? 'bg-orange-600 border-orange-500 text-white' :
+                'bg-neutral-900 border-neutral-800 text-neutral-400'
+              }`}>
+              <div className="font-display text-2xl">{n}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-8 p-4 bg-neutral-900/50 border border-neutral-800 rounded-2xl">
+        <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-3">Hoy haras</div>
+        <ul className="space-y-2">
+          {rutina.ejercicios.map((e, i) => {
+            const ex = EXERCISES[e.id];
+            return (
+              <li key={i} className="flex items-start gap-3 text-sm">
+                <span className="font-mono text-xs text-neutral-600 mt-0.5 w-5">{i + 1}.</span>
+                <div className="flex-1">
+                  <span className={e.warmup ? 'text-neutral-500' : 'text-neutral-200'}>
+                    {ex.nombre}
+                  </span>
+                  {!e.warmup && (
+                    <span className="text-xs text-neutral-600 ml-2">
+                      {e.series}x{e.reps || (e.duracion + 's')}
+                    </span>
+                  )}
+                  {ex.estrella && <span className="text-orange-500 ml-1">*</span>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <button onClick={() => onStart({ dolorPre, energia })}
+        className="fixed bottom-20 left-5 right-5 py-5 bg-orange-600 hover:bg-orange-500 rounded-2xl font-display text-2xl text-white shadow-2xl shadow-orange-500/30">
+        Empezar Sesion
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE: Cierre de Sesion
+// ============================================================
+function SessionEnd({ ejerciciosCompletados, onSave, onCancel }) {
+  const [dolorPost, setDolorPost] = useState(0);
+  const [notas, setNotas] = useState('');
+
+  return (
+    <div className="screen-enter px-5 pt-6 pb-24">
+      <button onClick={onCancel} className="text-neutral-500 text-sm mb-3">&larr; Volver</button>
+      <h2 className="font-display text-4xl leading-none">Sesion Completada</h2>
+      <p className="text-sm text-neutral-400 mt-1">{ejerciciosCompletados.length} ejercicios registrados</p>
+
+      <div className="mt-8">
+        <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+          Dolor de rodilla DESPUES (0-10)
+        </label>
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            type="range" min="0" max="10" value={dolorPost}
+            onChange={e => setDolorPost(Number(e.target.value))}
+            className="flex-1 accent-orange-500"
+          />
+          <div className="font-display text-3xl w-12 text-center" style={{
+            color: dolorPost <= 2 ? '#4ade80' : dolorPost <= 5 ? '#fbbf24' : '#ef4444'
+          }}>{dolorPost}</div>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Notas libres</label>
+        <textarea
+          value={notas}
+          onChange={e => setNotas(e.target.value)}
+          rows={4}
+          placeholder="Como te sentiste, que mejorar, comentarios..."
+          className="w-full mt-2 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm"
+        />
+      </div>
+
+      <button onClick={() => onSave({ dolorPost, notas })}
+        className="fixed bottom-20 left-5 right-5 py-5 bg-green-600 hover:bg-green-500 rounded-2xl font-display text-2xl text-white shadow-2xl shadow-green-500/30">
+        Guardar Sesion
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// PANTALLA: HOY
+// ============================================================
+function HomeScreen({ state, setState, onShowToast }) {
+  const [mode, setMode] = useState('home');
+  const [activeRutina, setActiveRutina] = useState(null);
+  const [activeDiaKey, setActiveDiaKey] = useState(null);
+  const [sessionMeta, setSessionMeta] = useState({});
+  const [exerciseIdx, setExerciseIdx] = useState(0);
+  const [exerciciosCompletados, setEjerciciosCompletados] = useState([]);
+
+  const todayKey = getTodayKey();
+  const fase = ROUTINES[state.fase];
+  const rutinaHoy = fase.dias[todayKey];
+
+  const yaEntrenoHoy = state.sesiones.some(s => s.fecha === todayISO());
+
+  const esMiercoles = todayKey === 'miercoles';
+
+  const startSession = (meta) => {
+    setSessionMeta(meta);
+    setExerciseIdx(0);
+    setEjerciciosCompletados([]);
+    setMode('exercising');
+  };
+
+  const completarEjercicio = (registro) => {
+    const nuevos = [...exerciciosCompletados, registro];
+    setEjerciciosCompletados(nuevos);
+    if (exerciseIdx + 1 >= activeRutina.ejercicios.length) {
+      setMode('end');
+    } else {
+      setExerciseIdx(exerciseIdx + 1);
+    }
+  };
+
+  const saltarEjercicio = () => {
+    if (exerciseIdx + 1 >= activeRutina.ejercicios.length) {
+      setMode('end');
+    } else {
+      setExerciseIdx(exerciseIdx + 1);
+    }
+  };
+
+  const guardarSesion = ({ dolorPost, notas }) => {
+    const sesion = {
+      id: Date.now(),
+      fecha: todayISO(),
+      diaKey: activeDiaKey,
+      tipo: activeRutina.nombre,
+      dolorPre: sessionMeta.dolorPre,
+      dolorPost,
+      energia: sessionMeta.energia,
+      notas,
+      ejercicios: exerciciosCompletados,
+      duracionMin: activeRutina.duracion_estimada,
+    };
+    setState(s => ({ ...s, sesiones: [...s.sesiones, sesion] }));
+    onShowToast('Sesion guardada', 'success');
+    setMode('home');
+    setActiveRutina(null);
+  };
+
+  if (mode === 'start' && activeRutina) {
+    return <SessionStart rutina={activeRutina} diaKey={activeDiaKey}
+      onStart={startSession} onCancel={() => { setMode('home'); setActiveRutina(null); }} />;
+  }
+
+  if (mode === 'exercising' && activeRutina) {
+    return (
+      <div>
+        <div className="px-5 pt-4 pb-2 border-b border-neutral-900 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+              Ejercicio {exerciseIdx + 1} / {activeRutina.ejercicios.length}
+            </div>
+            <div className="font-mono text-xs text-neutral-400 mt-0.5">{activeRutina.nombre}</div>
+          </div>
+          <div className="flex gap-1">
+            {activeRutina.ejercicios.map((_, i) => (
+              <div key={i} className={`w-1.5 h-6 rounded-full ${
+                i < exerciseIdx ? 'bg-green-500' :
+                i === exerciseIdx ? 'bg-orange-500' :
+                'bg-neutral-800'
+              }`} />
+            ))}
+          </div>
+        </div>
+        <ExerciseScreen
+          exerciseConfig={activeRutina.ejercicios[exerciseIdx]}
+          onComplete={completarEjercicio}
+          onSkip={saltarEjercicio}
+          onShowToast={onShowToast}
+          sesiones={state.sesiones}
+        />
+      </div>
+    );
+  }
+
+  if (mode === 'end') {
+    return <SessionEnd ejerciciosCompletados={exerciciosCompletados}
+      onSave={guardarSesion} onCancel={() => setMode('exercising')} />;
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-28 screen-enter">
+      <div className="flex items-baseline justify-between">
+        <div>
+          <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">{DIAS_DISPLAY[todayKey]}</div>
+          <h1 className="font-display text-5xl leading-none mt-1">JJ STRONG</h1>
+        </div>
+        <div className="text-right">
+          <div className="font-mono text-xs text-neutral-500">{fase.nombre}</div>
+          <div className="font-mono text-xs text-neutral-600">Sem {fase.semanas}</div>
+        </div>
+      </div>
+
+      <div className="mt-2 h-px stripe-accent opacity-30"></div>
+
+      {esMiercoles ? (
+        <div className="mt-8 p-6 bg-gradient-to-br from-orange-950/40 to-neutral-900 border border-orange-900/40 rounded-2xl">
+          <div className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">Hoy</div>
+          <h2 className="font-display text-4xl mt-1 leading-none">BASQUET</h2>
+          <p className="text-sm text-neutral-300 mt-3">
+            Dia de retas. NO entrenes pierna pesada hoy.
+          </p>
+          <div className="mt-4 p-3 bg-black/30 rounded-xl">
+            <div className="text-[10px] font-mono text-yellow-400 uppercase tracking-widest mb-1">Recomendacion</div>
+            <p className="text-xs text-neutral-300">
+              Hidratate bien antes y durante. Despues: estiramiento de cuadriceps, isquios y cadera 5-10 min. Hielo en rodilla 10 min si quedo molesta.
+            </p>
+          </div>
+        </div>
+      ) : rutinaHoy && !yaEntrenoHoy ? (
+        <div className="mt-8 p-6 bg-gradient-to-br from-neutral-900 to-black border border-neutral-800 rounded-2xl">
+          <div className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">Rutina de hoy</div>
+          <h2 className="font-display text-4xl mt-1 leading-none">{rutinaHoy.nombre}</h2>
+          <p className="text-sm text-neutral-400 mt-3">{rutinaHoy.foco}</p>
+          <div className="mt-3 flex gap-3 text-xs font-mono text-neutral-500">
+            <span>~{rutinaHoy.duracion_estimada} min</span>
+            <span>|</span>
+            <span>{rutinaHoy.ejercicios.length} ejercicios</span>
+          </div>
+          <button onClick={() => { setActiveRutina(rutinaHoy); setActiveDiaKey(todayKey); setMode('start'); }}
+            className="w-full mt-5 py-4 bg-orange-600 hover:bg-orange-500 rounded-xl font-display text-2xl text-white">
+            Empezar
+          </button>
+        </div>
+      ) : yaEntrenoHoy ? (
+        <div className="mt-8 p-6 bg-green-950/30 border border-green-900/40 rounded-2xl text-center">
+          <div className="text-5xl">&check;</div>
+          <h2 className="font-display text-3xl mt-2">Ya entrenaste hoy</h2>
+          <p className="text-sm text-neutral-400 mt-2">Bien hecho. Descansa.</p>
+        </div>
+      ) : (
+        <div className="mt-8 p-6 bg-neutral-900/50 border border-neutral-800 rounded-2xl text-center">
+          <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Hoy</div>
+          <h2 className="font-display text-3xl mt-1">Dia de descanso</h2>
+          <p className="text-sm text-neutral-400 mt-3">
+            Tus dias son: Lunes, Jueves, Sabado.<br/>
+            Miercoles: basquet. Resto: descanso activo.
+          </p>
+          <button onClick={() => {
+            const otrosDias = ['lunes', 'jueves', 'sabado'];
+            const next = otrosDias.find(d => fase.dias[d]) || 'lunes';
+            setActiveRutina(fase.dias[next]);
+            setActiveDiaKey(next);
+            setMode('start');
+          }}
+            className="mt-5 px-5 py-3 bg-neutral-800 rounded-xl text-sm">
+            Entrenar de todos modos
+          </button>
+        </div>
+      )}
+
+      <div className="mt-10">
+        <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-3">Otras rutinas</div>
+        <div className="grid grid-cols-3 gap-2">
+          {Object.entries(fase.dias).map(([k, r]) => (
+            <button key={k}
+              onClick={() => { setActiveRutina(r); setActiveDiaKey(k); setMode('start'); }}
+              className={`p-3 rounded-xl border text-left ${
+                k === todayKey ? 'bg-orange-900/30 border-orange-700' : 'bg-neutral-900 border-neutral-800'
+              }`}>
+              <div className="text-[10px] font-mono text-neutral-500 uppercase">{DIAS_DISPLAY[k].slice(0,3)}</div>
+              <div className="text-xs font-semibold mt-1 leading-tight">{r.nombre}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// PANTALLA: HISTORIAL
+// ============================================================
+function HistoryScreen({ state }) {
+  const [expanded, setExpanded] = useState(null);
+  const sesionesOrdenadas = [...state.sesiones].reverse();
+
+  if (sesionesOrdenadas.length === 0) {
+    return (
+      <div className="px-5 pt-6 pb-28 screen-enter">
+        <h1 className="font-display text-4xl">Historial</h1>
+        <div className="mt-12 text-center text-neutral-500">
+          <p className="mt-4 text-sm">Aun no hay sesiones registradas.<br/>Tu primer entreno aparecera aqui.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-28 screen-enter">
+      <h1 className="font-display text-4xl">Historial</h1>
+      <p className="text-xs font-mono text-neutral-500 mt-1">{state.sesiones.length} sesiones registradas</p>
+
+      <div className="mt-6 space-y-3">
+        {sesionesOrdenadas.map(s => (
+          <div key={s.id}
+            className="bg-neutral-900/50 border border-neutral-800 rounded-2xl overflow-hidden">
+            <button onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+              className="w-full p-4 text-left">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10px] font-mono text-neutral-500 uppercase">
+                    {formatDate(s.fecha)}
+                  </div>
+                  <div className="font-display text-xl mt-1 leading-none">{s.tipo}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs font-mono text-neutral-400">
+                    {s.ejercicios ? s.ejercicios.length : 0} ej.
+                  </div>
+                  <div className="text-[10px] font-mono mt-1">
+                    <span className="text-neutral-600">Dolor:</span>
+                    <span className={`ml-1 ${
+                      (s.dolorPost || 0) <= 2 ? 'text-green-400' :
+                      (s.dolorPost || 0) <= 5 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>{s.dolorPre}&rarr;{s.dolorPost}</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {expanded === s.id && (
+              <div className="px-4 pb-4 border-t border-neutral-800 pt-3">
+                {s.notas && (
+                  <p className="text-xs text-neutral-400 italic mb-3">"{s.notas}"</p>
+                )}
+                <ul className="space-y-2">
+                  {s.ejercicios && s.ejercicios.map((e, i) => (
+                    <li key={i} className="text-xs">
+                      <div className="font-semibold">{e.nombre}</div>
+                      <div className="font-mono text-neutral-500 mt-0.5">
+                        {e.series.map((ser, si) => (
+                          <span key={si}>
+                            {ser.peso > 0 && (ser.peso + 'kg×')}
+                            {ser.reps > 0 ? ser.reps : (ser.duracion + 's')}
+                            {si < e.series.length - 1 && ' · '}
+                          </span>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// PANTALLA: PROGRESO
+// ============================================================
+function ProgressScreen({ state, setState, onShowToast }) {
+  const [tab, setTab] = useState('rodilla');
+  const [selectedExercise, setSelectedExercise] = useState('sentadilla_espanola');
+
+  const dolorData = useMemo(() => {
+    return state.sesiones.map(s => ({
+      fecha: s.fecha.slice(5),
+      pre: s.dolorPre,
+      post: s.dolorPost,
+    }));
+  }, [state.sesiones]);
+
+  const ejerciciosConHistorial = useMemo(() => {
+    const set = new Set();
+    state.sesiones.forEach(s => {
+      if (s.ejercicios) s.ejercicios.forEach(e => set.add(e.id));
+    });
+    return Array.from(set).map(id => ({ id, nombre: EXERCISES[id] ? EXERCISES[id].nombre : id }));
+  }, [state.sesiones]);
+
+  const fuerzaData = useMemo(() => {
+    return state.sesiones
+      .filter(s => s.ejercicios && s.ejercicios.some(e => e.id === selectedExercise))
+      .map(s => {
+        const ej = s.ejercicios.find(e => e.id === selectedExercise);
+        const maxPeso = Math.max(...ej.series.map(x => x.peso || 0));
+        const totalReps = ej.series.reduce((sum, x) => sum + (x.reps || 0), 0);
+        return {
+          fecha: s.fecha.slice(5),
+          peso: maxPeso,
+          reps: totalReps,
+        };
+      });
+  }, [state.sesiones, selectedExercise]);
+
+  const pesoData = useMemo(() => {
+    return state.mediciones.map(m => ({
+      fecha: m.fecha.slice(5),
+      peso: m.peso,
+      cintura: m.cintura,
+      pecho: m.pecho,
+    }));
+  }, [state.mediciones]);
+
+  const [showAddMedicion, setShowAddMedicion] = useState(false);
+  const [nuevaMedicion, setNuevaMedicion] = useState({
+    peso: 78, cintura: '', pecho: '', brazo: ''
+  });
+
+  const guardarMedicion = () => {
+    const m = {
+      fecha: todayISO(),
+      peso: Number(nuevaMedicion.peso) || 0,
+      cintura: Number(nuevaMedicion.cintura) || 0,
+      pecho: Number(nuevaMedicion.pecho) || 0,
+      brazo: Number(nuevaMedicion.brazo) || 0,
+    };
+    setState(s => ({ ...s, mediciones: [...s.mediciones.filter(x => x.fecha !== m.fecha), m] }));
+    setShowAddMedicion(false);
+    onShowToast('Medicion guardada', 'success');
+  };
+
+  return (
+    <div className="px-5 pt-6 pb-28 screen-enter">
+      <h1 className="font-display text-4xl">Progreso</h1>
+
+      <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
+        {[
+          { k: 'rodilla', label: 'Rodilla' },
+          { k: 'fuerza', label: 'Fuerza' },
+          { k: 'peso', label: 'Cuerpo' },
+        ].map(t => (
+          <button key={t.k}
+            onClick={() => setTab(t.k)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap ${
+              tab === t.k ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'rodilla' && (
+        <div className="mt-6">
+          <h2 className="font-display text-2xl">Dolor de rodilla</h2>
+          <p className="text-xs text-neutral-500 mt-1">Antes vs despues de cada sesion</p>
+
+          {dolorData.length === 0 ? (
+            <p className="text-sm text-neutral-500 mt-8 text-center">Sin datos aun.</p>
+          ) : (
+            <div className="mt-5 h-64 bg-neutral-900/50 border border-neutral-800 rounded-2xl p-3">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dolorData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                  <XAxis dataKey="fecha" stroke="#666" fontSize={10} />
+                  <YAxis domain={[0, 10]} stroke="#666" fontSize={10} />
+                  <Tooltip contentStyle={{ background: '#0a0a0a', border: '1px solid #333' }} />
+                  <Line type="monotone" dataKey="pre" stroke="#fbbf24" strokeWidth={2} name="Antes" />
+                  <Line type="monotone" dataKey="post" stroke="#ef4444" strokeWidth={2} name="Despues" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          <div className="mt-5 p-4 bg-neutral-900/50 border border-neutral-800 rounded-2xl text-xs">
+            <div className="font-mono text-neutral-500 uppercase tracking-widest text-[10px] mb-2">Como leer esto</div>
+            <p className="text-neutral-300">
+              <span className="text-green-400">Tendencia bajando</span> (pre y post): la rodilla esta mejorando.
+              Si <span className="text-red-400">post &gt; pre consistentemente</span>, hay que revisar carga o consultar fisio.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {tab === 'fuerza' && (
+        <div className="mt-6">
+          <h2 className="font-display text-2xl">Progresion de fuerza</h2>
+
+          {ejerciciosConHistorial.length === 0 ? (
+            <p className="text-sm text-neutral-500 mt-8 text-center">Sin datos aun.</p>
+          ) : (
+            <>
+              <select
+                value={selectedExercise}
+                onChange={e => setSelectedExercise(e.target.value)}
+                className="w-full mt-4 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm">
+                {ejerciciosConHistorial.map(e => (
+                  <option key={e.id} value={e.id}>{e.nombre}</option>
+                ))}
+              </select>
+
+              <div className="mt-5 h-64 bg-neutral-900/50 border border-neutral-800 rounded-2xl p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={fuerzaData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                    <XAxis dataKey="fecha" stroke="#666" fontSize={10} />
+                    <YAxis stroke="#666" fontSize={10} />
+                    <Tooltip contentStyle={{ background: '#0a0a0a', border: '1px solid #333' }} />
+                    <Line type="monotone" dataKey="peso" stroke="#ff6b1a" strokeWidth={3} name="Peso (kg)" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'peso' && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-2xl">Peso y medidas</h2>
+            <button onClick={() => setShowAddMedicion(true)}
+              className="px-3 py-2 bg-orange-600 rounded-lg text-xs font-semibold">+ Registrar</button>
+          </div>
+
+          {pesoData.length === 0 ? (
+            <p className="text-sm text-neutral-500 mt-8 text-center">
+              Aun no has registrado mediciones.<br/>Tip: pesate cada lunes en ayunas.
+            </p>
+          ) : (
+            <div className="mt-5 h-56 bg-neutral-900/50 border border-neutral-800 rounded-2xl p-3">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={pesoData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                  <XAxis dataKey="fecha" stroke="#666" fontSize={10} />
+                  <YAxis stroke="#666" fontSize={10} />
+                  <Tooltip contentStyle={{ background: '#0a0a0a', border: '1px solid #333' }} />
+                  <Line type="monotone" dataKey="peso" stroke="#4ade80" strokeWidth={2} name="Peso kg" />
+                  <Line type="monotone" dataKey="cintura" stroke="#fbbf24" strokeWidth={2} name="Cintura cm" />
+                  <Line type="monotone" dataKey="pecho" stroke="#60a5fa" strokeWidth={2} name="Pecho cm" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {showAddMedicion && (
+            <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur p-5 overflow-y-auto">
+              <button onClick={() => setShowAddMedicion(false)}
+                className="text-neutral-400 text-sm mb-4">&larr; Cancelar</button>
+              <h3 className="font-display text-3xl mb-4">Nueva medicion</h3>
+              <p className="text-xs text-neutral-500 mb-6">{formatDate(todayISO())}</p>
+
+              {[
+                { k: 'peso', label: 'Peso (kg)', step: 0.1 },
+                { k: 'cintura', label: 'Cintura (cm)', step: 0.5 },
+                { k: 'pecho', label: 'Pecho (cm)', step: 0.5 },
+                { k: 'brazo', label: 'Brazo (cm)', step: 0.5 },
+              ].map(f => (
+                <div key={f.k} className="mb-4">
+                  <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">{f.label}</label>
+                  <input
+                    type="number"
+                    step={f.step}
+                    value={nuevaMedicion[f.k]}
+                    onChange={e => setNuevaMedicion({ ...nuevaMedicion, [f.k]: e.target.value })}
+                    className="w-full mt-2 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl font-mono text-2xl"
+                  />
+                </div>
+              ))}
+
+              <button onClick={guardarMedicion}
+                className="w-full py-4 bg-orange-600 rounded-xl font-display text-2xl mt-4">
+                Guardar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// PANTALLA: SUPLEMENTOS
+// ============================================================
+function SupplementsScreen({ state, setState, onShowToast }) {
+  const today = todayISO();
+  const todayLog = state.suplementosLog[today] || {};
+
+  const toggleSup = (supId) => {
+    const newLog = { ...state.suplementosLog };
+    if (!newLog[today]) newLog[today] = {};
+    newLog[today][supId] = !newLog[today][supId];
+    setState(s => ({ ...s, suplementosLog: newLog }));
+  };
+
+  const streak = useMemo(() => {
+    let count = 0;
+    const d = new Date();
+    while (true) {
+      const key = d.toISOString().slice(0, 10);
+      const log = state.suplementosLog[key];
+      if (log && log.whey && log.creatina) {
+        count++;
+        d.setDate(d.getDate() - 1);
+      } else break;
+    }
+    return count;
+  }, [state.suplementosLog]);
+
+  return (
+    <div className="px-5 pt-6 pb-28 screen-enter">
+      <h1 className="font-display text-4xl">Suplementos</h1>
+      <p className="text-xs font-mono text-neutral-500 mt-1">{formatDate(today)}</p>
+
+      {streak > 0 && (
+        <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 bg-orange-900/30 border border-orange-900/50 rounded-full">
+          <span className="text-orange-500">~</span>
+          <span className="text-xs font-mono">Racha: {streak} {streak === 1 ? 'dia' : 'dias'}</span>
+        </div>
+      )}
+
+      <div className="mt-6 space-y-3">
+        {SUPLEMENTOS.map(sup => {
+          const tomado = todayLog[sup.id];
+          return (
+            <button key={sup.id}
+              onClick={() => toggleSup(sup.id)}
+              className={`w-full p-4 rounded-2xl border text-left transition ${
+                tomado ? 'bg-green-950/30 border-green-900/50' : 'bg-neutral-900/50 border-neutral-800'
+              }`}>
+              <div className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  tomado ? 'bg-green-600' : 'border-2 border-neutral-700'
+                }`}>
+                  {tomado && <span className="text-white text-lg">&check;</span>}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="font-display text-xl">{sup.nombre}</div>
+                    {sup.prioridad === 1 && (
+                      <span className="text-[9px] font-mono text-orange-500 px-1.5 py-0.5 border border-orange-700/50 rounded">CORE</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-neutral-400 mt-1 font-mono">{sup.dosis}</div>
+                  <div className="text-[10px] text-neutral-500 mt-0.5">{sup.momento}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-8 p-4 bg-neutral-900/30 border border-neutral-800 rounded-2xl">
+        <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">Recordatorio</div>
+        <p className="text-xs text-neutral-400">
+          Antes de empezar creatina y omega 3, valida con tu medico con quimica sanguinea basica
+          (funcion renal, perfil lipidico, vitamina D). A los 50 anos deberias tener este chequeo anual.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// PANTALLA: CONFIGURACION / EXPORT
+// ============================================================
+function SettingsScreen({ state, setState, onShowToast }) {
+  const fileInputRef = useRef(null);
+
+  const exportar = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'jjstrong-backup-' + todayISO() + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    setState(s => ({ ...s, ultimoExport: todayISO() }));
+    onShowToast('Backup descargado. Subelo a OneDrive.', 'success');
+  };
+
+  const exportarCSV = () => {
+    let csv = 'Fecha,Tipo,Ejercicio,Serie,Peso(kg),Reps,Duracion(s),DolorPre,DolorPost,Notas\n';
+    state.sesiones.forEach(s => {
+      if (s.ejercicios) {
+        s.ejercicios.forEach(e => {
+          e.series.forEach((ser, si) => {
+            csv += s.fecha + ',"' + s.tipo + '","' + e.nombre + '",' + (si+1) + ',' + (ser.peso || 0) + ',' + (ser.reps || 0) + ',' + (ser.duracion || 0) + ',' + (s.dolorPre || '') + ',' + (s.dolorPost || '') + ',"' + (s.notas || '').replace(/"/g, '""') + '"\n';
+          });
+        });
+      }
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'jjstrong-sesiones-' + todayISO() + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    onShowToast('CSV descargado.', 'success');
+  };
+
+  const importar = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (!confirm('Esto reemplazara todos tus datos actuales. Continuar?')) return;
+        setState({ ...defaultState, ...data });
+        onShowToast('Datos importados', 'success');
+      } catch (err) {
+        onShowToast('Archivo invalido', 'danger');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const resetTodo = () => {
+    if (!confirm('BORRAR TODOS los datos? Esto no se puede deshacer.')) return;
+    if (!confirm('Ultima oportunidad. Estas seguro?')) return;
+    setState(defaultState);
+    onShowToast('Datos borrados', 'warn');
+  };
+
+  const diasDesdeUltimoExport = state.ultimoExport
+    ? Math.floor((new Date() - new Date(state.ultimoExport + 'T00:00:00')) / (1000 * 60 * 60 * 24))
+    : null;
+
+  return (
+    <div className="px-5 pt-6 pb-28 screen-enter">
+      <h1 className="font-display text-4xl">Ajustes</h1>
+
+      <div className="mt-6">
+        <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-3">Respaldo</div>
+
+        {(diasDesdeUltimoExport === null || diasDesdeUltimoExport >= 7) && state.sesiones.length > 0 && (
+          <div className="p-4 bg-yellow-900/20 border border-yellow-900/40 rounded-xl mb-3">
+            <p className="text-xs">
+              {diasDesdeUltimoExport === null ? 'Aun no haces respaldo.' : ('Hace ' + diasDesdeUltimoExport + ' dias que no respaldas.')}
+              {' '}Exporta y sube a OneDrive.
+            </p>
+          </div>
+        )}
+
+        <button onClick={exportar}
+          className="w-full p-4 bg-neutral-900 border border-neutral-800 rounded-xl text-left mb-2">
+          <div className="font-semibold">Exportar JSON (backup completo)</div>
+          <div className="text-xs text-neutral-500 mt-1">Para guardar en OneDrive y poder restaurar despues</div>
+        </button>
+
+        <button onClick={exportarCSV}
+          className="w-full p-4 bg-neutral-900 border border-neutral-800 rounded-xl text-left mb-2">
+          <div className="font-semibold">Exportar CSV (Excel)</div>
+          <div className="text-xs text-neutral-500 mt-1">Para analisis en Excel/Power BI</div>
+        </button>
+
+        <button onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          className="w-full p-4 bg-neutral-900 border border-neutral-800 rounded-xl text-left">
+          <div className="font-semibold">Importar JSON</div>
+          <div className="text-xs text-neutral-500 mt-1">Restaurar desde un backup</div>
+        </button>
+        <input ref={fileInputRef} type="file" accept=".json" onChange={importar} className="hidden" />
+      </div>
+
+      <div className="mt-8">
+        <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-3">Estadisticas</div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-4 bg-neutral-900/50 border border-neutral-800 rounded-xl">
+            <div className="font-display text-3xl">{state.sesiones.length}</div>
+            <div className="text-xs text-neutral-500">sesiones</div>
+          </div>
+          <div className="p-4 bg-neutral-900/50 border border-neutral-800 rounded-xl">
+            <div className="font-display text-3xl">{state.mediciones.length}</div>
+            <div className="text-xs text-neutral-500">mediciones</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-12">
+        <button onClick={resetTodo}
+          className="text-xs text-red-500 underline">
+          Borrar todos los datos
+        </button>
+      </div>
+
+      <div className="mt-8 text-center">
+        <div className="text-[10px] font-mono text-neutral-600">JJ STRONG v1.1 PWA</div>
+        <div className="text-[10px] font-mono text-neutral-700 mt-1">Datos en tu navegador (localStorage) | Offline ready</div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// APP PRINCIPAL
+// ============================================================
+function App() {
+  const [state, setState] = useState(loadState);
+  const [tab, setTab] = useState('home');
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => { saveState(state); }, [state]);
+
+  const showToast = useCallback((message, type) => {
+    setToast({ message, type, id: Date.now() });
+  }, []);
+
+  const tabs = [
+    { k: 'home', label: 'Hoy', icon: 'H' },
+    { k: 'history', label: 'Historial', icon: 'R' },
+    { k: 'progress', label: 'Progreso', icon: 'P' },
+    { k: 'sup', label: 'Suplem.', icon: 'S' },
+    { k: 'settings', label: 'Ajustes', icon: 'A' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-black text-neutral-100 safe-top">
+      <InstallBanner />
+      {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      <main className="max-w-md mx-auto">
+        {tab === 'home' && <HomeScreen state={state} setState={setState} onShowToast={showToast} />}
+        {tab === 'history' && <HistoryScreen state={state} />}
+        {tab === 'progress' && <ProgressScreen state={state} setState={setState} onShowToast={showToast} />}
+        {tab === 'sup' && <SupplementsScreen state={state} setState={setState} onShowToast={showToast} />}
+        {tab === 'settings' && <SettingsScreen state={state} setState={setState} onShowToast={showToast} />}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur border-t border-neutral-900 safe-bottom z-30">
+        <div className="max-w-md mx-auto grid grid-cols-5">
+          {tabs.map(t => (
+            <button key={t.k}
+              onClick={() => setTab(t.k)}
+              className={`py-3 flex flex-col items-center gap-0.5 ${
+                tab === t.k ? 'text-orange-500' : 'text-neutral-500'
+              }`}>
+              <span className="text-lg font-display">{t.icon}</span>
+              <span className="text-[9px] font-mono uppercase tracking-widest">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
