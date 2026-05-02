@@ -2,7 +2,7 @@
   "name": "JJ Strong - Rutina Personal",
   "short_name": "JJ Strong",
   "description": "Tu rutina de gym personalizada con seguimiento de progreso y rehabilitacion de rodilla",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0a",

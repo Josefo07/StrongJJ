@@ -1,10 +1,10 @@
-const CACHE_NAME = 'jjstrong-v1';
+const CACHE_NAME = 'jjstrong-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700;800&display=swap',
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/react@18/umd/react.production.min.js',
@@ -18,7 +18,7 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS).catch((err) => {
         console.warn('Some assets failed to cache:', err);
-        return cache.addAll(['/', '/index.html', '/manifest.json']);
+        return cache.addAll(['./', './index.html', './manifest.json']);
       });
     })
   );
